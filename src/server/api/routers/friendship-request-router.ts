@@ -84,13 +84,17 @@ export const friendshipRequestRouter = router({
         .select(({ fn }) => [fn.countAll().as('count')])
         .where('userId', '=', ctx.session.userId)
         .where('friendUserId', '=', input.friendUserId)
-        .executeTakeFirst()
+        .executeTakeFirstOrThrow(() => {
+          throw new TRPCError({
+            code: 'BAD_REQUEST',
+          })
+        })
       if (friend) {
         await ctx.db
           .deleteFrom('friendships')
           .where('userId', '=', ctx.session.userId)
           .where('friendUserId', '=', input.friendUserId)
-          .executeTakeFirst()
+          .execute()
       }
       return ctx.db
         .insertInto('friendships')
@@ -107,53 +111,6 @@ export const friendshipRequestRouter = router({
     .input(AnswerFriendshipRequestInputSchema)
     .mutation(async ({ ctx, input }) => {
       await ctx.db.transaction().execute(async (t) => {
-        await t
-          .updateTable('friendships')
-          .set({
-            status: FriendshipStatusSchema.Values['accepted'],
-          })
-          .where('userId', '=', input.friendUserId)
-          .where('friendUserId', '=', ctx.session.userId)
-          .executeTakeFirst()
-        const friend = await t
-          .selectFrom('friendships')
-          .select(['userId', 'friendUserId', 'status'])
-          .where('userId', '=', ctx.session.userId)
-          .where('friendUserId', '=', input.friendUserId)
-          .execute()
-        if (friend) {
-          await t
-            .deleteFrom('friendships')
-            .where('userId', '=', ctx.session.userId)
-            .where('friendUserId', '=', input.friendUserId)
-            .executeTakeFirst()
-        }
-        await t
-          .insertInto('friendships')
-          .values({
-            userId: ctx.session.userId,
-            friendUserId: input.friendUserId,
-            status: FriendshipStatusSchema.Values['accepted'],
-          })
-          .returning(['userId', 'friendUserId', 'status'])
-          .executeTakeFirst()
-
-        // return await t
-        //   .selectFrom('friendships')
-        //   .select(['userId', 'friendUserId', 'status'])
-        //   .where((eb) =>
-        //     eb.or([
-        //       eb('userId', '=', ctx.session.userId),
-        //       eb('userId', '=', input.friendUserId),
-        //     ])
-        //   )
-        //   .where((eb) =>
-        //     eb.or([
-        //       eb('friendUserId', '=', ctx.session.userId),
-        //       eb('friendUserId', '=', input.friendUserId),
-        //     ])
-        //   )
-        //   .execute()
         /**
          * Question 1: Implement api to accept a friendship request
          *
@@ -177,6 +134,36 @@ export const friendshipRequestRouter = router({
          *  - https://kysely-org.github.io/kysely/classes/Kysely.html#insertInto
          *  - https://kysely-org.github.io/kysely/classes/Kysely.html#updateTable
          */
+        await t
+          .updateTable('friendships')
+          .set({
+            status: FriendshipStatusSchema.Values['accepted'],
+          })
+          .where('userId', '=', input.friendUserId)
+          .where('friendUserId', '=', ctx.session.userId)
+          .executeTakeFirst()
+        const friend = await t
+          .selectFrom('friendships')
+          .select(['userId', 'friendUserId', 'status'])
+          .where('userId', '=', ctx.session.userId)
+          .where('friendUserId', '=', input.friendUserId)
+          .execute()
+        if (friend) {
+          await t
+            .deleteFrom('friendships')
+            .where('userId', '=', ctx.session.userId)
+            .where('friendUserId', '=', input.friendUserId)
+            .executeTakeFirst()
+        }
+        return await t
+          .insertInto('friendships')
+          .values({
+            userId: ctx.session.userId,
+            friendUserId: input.friendUserId,
+            status: FriendshipStatusSchema.Values['accepted'],
+          })
+          .returning(['userId', 'friendUserId', 'status'])
+          .executeTakeFirst()
       })
     }),
 
@@ -184,14 +171,6 @@ export const friendshipRequestRouter = router({
     .use(canAnswerFriendshipRequest)
     .input(AnswerFriendshipRequestInputSchema)
     .mutation(async ({ ctx, input }) => {
-      return await ctx.db
-        .updateTable('friendships')
-        .set({
-          status: FriendshipStatusSchema.Values['declined'],
-        })
-        .where('userId', '=', input.friendUserId)
-        .where('friendUserId', '=', ctx.session.userId)
-        .execute()
       /**
        * Question 2: Implement api to decline a friendship request
        *
@@ -205,5 +184,13 @@ export const friendshipRequestRouter = router({
        * Documentation references:
        *  - https://vitest.dev/api/#test-skip
        */
+      return await ctx.db
+        .updateTable('friendships')
+        .set({
+          status: FriendshipStatusSchema.Values['declined'],
+        })
+        .where('userId', '=', input.friendUserId)
+        .where('friendUserId', '=', ctx.session.userId)
+        .execute()
     }),
 })
